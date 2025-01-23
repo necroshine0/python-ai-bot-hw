@@ -36,12 +36,10 @@ async def set_commands():
     logger.info("Команды бота установлены.")
 
 
-# from utils import load_test_user_data
-# user_data = defaultdict(load_test_user_data)
-
-user_profiles = {}
 user_data = defaultdict(UserData)
+user_profiles = {}
 food_info = {}
+
 
 class ProfileForm(StatesGroup):
     waiting_for_sex = State()
