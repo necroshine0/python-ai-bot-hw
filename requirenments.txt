@@ -1,0 +1,8 @@
+aiogram
+aiohttp
+langchain
+langchain_gigachat
+python-dotenv
+pandas
+seaborn
+matplotlib
