@@ -9,7 +9,7 @@ from aiogram.types import BotCommand, CallbackQuery
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from aiogram import types
-from utils import gigachat_call, get_temp, UserData
+from utils import gigachat_call, get_temp
 
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -36,7 +36,8 @@ async def set_commands():
     logger.info("Команды бота установлены.")
 
 
-user_data = defaultdict(UserData)
+from utils import load_test_user_data
+user_data = defaultdict(load_test_user_data)
 user_profiles = {}
 food_info = {}
 workout_info = {}

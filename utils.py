@@ -119,6 +119,35 @@ class UserData(object):
         return files
 
 
+def load_test_user_data():
+    user_data = UserData()
+
+    user_data.append({"water": 800, "calories_in": 300, "calories_out": 100}, "2025-01-19")
+    user_data.append({"water": 1000, "calories_in": 750, "calories_out": 200}, "2025-01-19")
+
+    user_data.append({"water": 1000, "calories_in": 1000, "calories_out": 100}, "2025-01-20")
+    user_data.append({"water": 1500, "calories_in": 1300, "calories_out": 100}, "2025-01-20")
+    user_data.append({"water": 0, "calories_in": 300, "calories_out": 200}, "2025-01-20")
+
+    user_data.append({"water": 1000, "calories_in": 800, "calories_out": 50}, "2025-01-21")
+    user_data.append({"water": 500, "calories_in": 300, "calories_out": 250}, "2025-01-21")
+    user_data.append({"water": 200, "calories_in": 700, "calories_out": 100}, "2025-01-21")
+    user_data.append({"water": 350, "calories_in": 500, "calories_out": 75}, "2025-01-21")
+
+    user_data.append({"water": 1000}, "2025-01-22")
+    user_data.append({"calories_in": 300}, "2025-01-22")
+    user_data.append({"calories_out": 100}, "2025-01-22")
+    user_data.append({"water": 500}, "2025-01-22")
+    user_data.append({"calories_in": 1000}, "2025-01-22")
+    user_data.append({"calories_out": 200}, "2025-01-22")
+    user_data.append({"water": 700}, "2025-01-22")
+    user_data.append({"calories_in": 500}, "2025-01-22")
+    user_data.append({"calories_out": 75}, "2025-01-22")
+
+    user_data.last_date = "2025-01-22"
+    return user_data
+
+
 async def gigachat_call(prompt):
     try:
         logger.info(f"Запрос к GigaChat: {prompt}")
