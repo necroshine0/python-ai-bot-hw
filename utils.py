@@ -61,6 +61,9 @@ class UserData(object):
 
     def draw_stat(self, cal_food_norm, water_norm):
         last_df_cs = pd.DataFrame.from_dict(self[-1]).cumsum()
+        if last_df_cs.shape[0] == 0:
+            return []
+
         sum_df = pd.DataFrame.from_dict(self.sum_data).T.rename_axis("date").reset_index()
         os.makedirs("img", exist_ok=True)
 
@@ -133,6 +136,7 @@ async def gigachat_call(prompt):
 
 
 async def get_temp(city):
+    logger.info(f"Расчет температуры для города: {city}")
     api_key = os.environ.get("OWM_API_KEY")
     async with aiohttp.ClientSession() as session:
         payload = {"q": city}
@@ -149,4 +153,6 @@ async def get_temp(city):
 
         async with session.get("https://api.openweathermap.org/data/2.5/weather", params=payload) as response:
             weather_data = await response.json()
-            return weather_data["main"]["temp"]
+            temp = weather_data["main"]["temp"]
+            logger.info(f"Рассчитана температуры для города {city}: {temp} градусов")
+            return temp

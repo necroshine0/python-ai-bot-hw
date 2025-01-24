@@ -39,6 +39,7 @@ async def set_commands():
 user_data = defaultdict(UserData)
 user_profiles = {}
 food_info = {}
+workout_info = {}
 
 
 class ProfileForm(StatesGroup):
@@ -247,9 +248,9 @@ async def process_calories(message: types.Message, state: FSMContext):
         logger.info(f"Пользователь {user_id} не указал цель калорий, рассчитываем автоматически.")
         # На основе формулы Харриса-Бенедикта (добавлен КФА)
         if sex == "мужской":
-            calories = int((66.5 + 13.75 * weight + 5.003 * height - 6.775 * age) * 1.1 * cpa)
+            calories = int((66.5 + 13.75 * weight + 5.003 * height - 6.775 * age) * cpa)
         else:
-            calories = int((655.1 + 9.563 * weight + 1.85 * height - 4.676 * age) * cpa)
+            calories = int((655.1 + 9.563 * weight + 1.85 * height - 4.676 * age) * 0.9 * cpa)
 
     # Сохраняем профиль пользователя
     user_profiles[user_id] = {
@@ -274,6 +275,8 @@ async def cmd_log_water(message: types.Message):
     user_id = message.from_user.id
     try:
         amount = int(message.text.split()[1])
+        logger.info(f"Пользователь {user_id} указал потребление {amount} мл жидкости.")
+
         user_data[user_id].append({"water": amount})
         profile = user_profiles.get(user_id)
         goal = profile.get("water")
@@ -281,6 +284,7 @@ async def cmd_log_water(message: types.Message):
         if remaining > 0:
             await message.answer(f"Записано: {amount} мл воды. Осталось: {remaining} мл до выполнения нормы.")
         else:
+            logger.info(f"Пользователь {user_id} выполнил норму: {goal} мл жидкости.")
             await message.answer(f"Записано: {amount} мл воды. Поздравляю! Вы выполнили норму")
         return
     except Exception as e:
@@ -291,20 +295,26 @@ async def cmd_log_water(message: types.Message):
 @dp.message(Command('log_food'))
 async def cmd_log_food(message: types.Message, state: FSMContext):
     try:
-        food = message.text.split(maxsplit=1)[1]
-        prompt = f"Сколько килокалорий содержится в 100 граммах {food}? Ответ дай только числом, без текста или единиц измерения."
-        for retry in range(3):
-            calories_info = await gigachat_call(prompt)
-            if type(calories_info) is int:
-                break
+        food = message.text.split(maxsplit=1)[1].lower()
+        logger.info(f"Пользователь {message.from_user.id} указал потребление еды: {food}")
+        if food in food_info:
+            calories_info = food_info[food]
+            logger.info(f"Энергетическая ценность {food} была предзагружена: {calories_info} ккал")
+        else:
+            logger.info(f"Обращение к Gigachat для расчета калорийности {food}")
+            prompt = f"Сколько килокалорий содержится в 100 граммах {food}? Ответ дай только числом, без текста или единиц измерения."
+            for retry in range(3):
+                calories_info = await gigachat_call(prompt)
+                if type(calories_info) is int:
+                    break
 
-        if isinstance(calories_info, str):
-            logger.exception(f"Получено исключение:\nНе удалось определить энергетическую ценность для указанного продукта: {food}")
-            await message.answer(f"Не удалось определить энергетическую ценность для указанного продукта: {food}")
-            return
+            if isinstance(calories_info, str):
+                logger.exception(f"Получено исключение:\nНе удалось определить энергетическую ценность для указанного продукта: {food}")
+                await message.answer(f"Не удалось определить энергетическую ценность для указанного продукта: {food}")
+                return
 
-        if food not in food_info:
             food_info[food] = calories_info
+
         await message.answer(f"{food.capitalize()} — {calories_info} ккал на 100 г. Сколько грамм вы употребили? (Запишите ответ одним числом)")
         await state.update_data(calories_info=calories_info, food=food)
         await state.set_state(ProfileForm.waiting_for_food_amout)
@@ -322,6 +332,7 @@ async def process_food_amount(message: types.Message, state: FSMContext):
     try:
         amount = int(message.text)
         total_calories = (calories_info * amount) / 100
+        logger.info(f"Пользователь {user_id} указал потребление еды: {state_data.get('food')} в объеме {amount} г. Расчетная калорийность: {total_calories} ккал.")
         user_data[user_id].append({"calories_in": total_calories})
 
         profile = user_profiles.get(user_id)
@@ -330,6 +341,7 @@ async def process_food_amount(message: types.Message, state: FSMContext):
         if remaining > 0:
             await message.answer(f"Записано: {total_calories:.2f} ккал. Осталось: {remaining} ккал до выполнения нормы.")
         else:
+            logger.info(f"Пользователь {user_id} выполнил норму по потреблению пищи: {goal} ккал")
             await message.answer(f"Записано: {total_calories:.2f} ккал. Поздравляю! Вы выполнили норму")
         await state.clear()
         return
@@ -344,23 +356,32 @@ async def cmd_log_workout(message: types.Message):
     user_id = message.from_user.id
     try:
         parts = re.search(r"log_workout ([\w\s]+) (\d+)", message.text)
-        action = parts.group(1).strip()
+        action = parts.group(1).strip().lower()
         duration = int(parts.group(2))
+        logger.info(f"Пользователь {user_id} провел тренировку {action} в течение {duration} минут.")
 
-        prompt = f"Сколько килокалорий сжигается за 1 минуту {action}? Ответ дай только одним числом, без какого либо текста и единиц измерения."
-        for retry in range(3):
-            calories_info = await gigachat_call(prompt)
-            if type(calories_info) is int:
-                break
+        calories_info = None
+        if action in workout_info:
+            calories_info = workout_info[action]
+            logger.info(f"Энергетическое потребление {action} было предзагружено: {calories_info} ккал за минуту")
+        else:
+            logger.info(f"Обращение к Gigachat для расчета энергопотребления {action}")
+            prompt = f"Сколько килокалорий сжигается за 1 минуту {action}? Ответ дай только одним числом, без какого либо текста и единиц измерения."
+            for retry in range(3):
+                calories_info = await gigachat_call(prompt)
+                if type(calories_info) is int:
+                    break
 
-        if isinstance(calories_info, str):
-            logger.exception(f"Получено исключение:\nНе удалось определить затраты энергии для тренировки: {action}")
-            await message.answer(f"Не удалось определить затраты энергии для тренировки: {action}")
-            return
+            if isinstance(calories_info, str):
+                logger.exception(f"Получено исключение:\nНе удалось определить затраты энергии для тренировки: {action}")
+                await message.answer(f"Не удалось определить затраты энергии для тренировки: {action}")
+                return
 
         calories_burned = calories_info * duration
         user_data[user_id].append({"calories_out": calories_burned})
         additional_water = (duration // 30) * 200
+        logger.info(f"Расчетное потребление энергии пользователем {user_id} за тренировку {action} в течение {duration} минут: {calories_burned} ккал. Дополнительный объем жидкости: {additional_water} мл")
+
         await message.answer(
             f"{action.capitalize()} {duration} минут — {calories_burned} ккал.\nДополнительно: выпейте {additional_water} мл воды."
         )
@@ -373,34 +394,47 @@ async def cmd_log_workout(message: types.Message):
 @dp.message(Command('check_progress'))
 async def cmd_check_progress(message: types.Message):
     user_id = message.from_user.id
-    profile = user_profiles.get(user_id, {})
+    logger.info(f"Пользователь {user_id} запросил визуализацию прогресса")
+
+    profile = user_profiles.get(user_id)
     goal_water = profile.get("water")
     goal_calories = profile.get("calories")
-    water_consumed = user_data[user_id]["water"]
-    calories_in = user_data[user_id]["calories_in"]
-    calories_out = user_data[user_id]["calories_out"]
-    progress_message = (
-        f"📊 Прогресс:\n\n"
-        f"Вода:\n"
-        f"- Выпито: {water_consumed}/{goal_water} мл.\n"
-        f"- Осталось: {max(goal_water - water_consumed, 0)} мл.\n\n"
-        f"Калории:\n"
-        f"- Потреблено: {calories_in}/{goal_calories} ккал.\n"
-        f"- Сожжено: {calories_out} ккал.\n"
-        f"- Баланс: {abs(calories_in - calories_out)} ккал.\n"
-    )
 
-    img_files = user_data[user_id].draw_stat(goal_calories, goal_water)
-    await message.answer(progress_message)
-    for f in img_files:
-        await bot.send_photo(message.chat.id, photo=types.FSInputFile(f))
-        os.remove(f)
+    if user_id in user_data:
+        water_consumed = user_data[user_id]["water"]
+        calories_in = user_data[user_id]["calories_in"]
+        calories_out = user_data[user_id]["calories_out"]
+        progress_message = (
+            f"📊 Прогресс:\n\n"
+            f"Вода:\n"
+            f"- Выпито: {water_consumed}/{goal_water} мл.\n"
+            f"- Осталось: {max(goal_water - water_consumed, 0)} мл.\n\n"
+            f"Калории:\n"
+            f"- Потреблено: {calories_in}/{goal_calories} ккал.\n"
+            f"- Сожжено: {calories_out} ккал.\n"
+            f"- Баланс: {abs(calories_in - calories_out)} ккал.\n"
+        )
+
+        img_files = user_data[user_id].draw_stat(goal_calories, goal_water)
+        if len(img_files) == 1:
+            logger.info(f"Для пользователя {user_id} выведен один график: накопительная динамика за последнюю дату {user_data[user_id].last_date}")
+        else:
+            logger.info(f"Для пользователя {user_id} выведено два графика: накопительная динамика за последнюю дату {user_data[user_id].last_date} и суммарная динамика за все время")
+
+        await message.answer(progress_message)
+        for f in img_files:
+            await bot.send_photo(message.chat.id, photo=types.FSInputFile(f))
+            os.remove(f)
+    else:
+        logger.info(f"Для пользователя {user_id} визуализация недоступна: отсутствуют данные.")
+        await message.answer("На данный момент статистика прогресса недоступна. Логируйте свои действия, чтобы получить ответ.")
 
     return
 
 
 @dp.message()
 async def process_invalid_message(message: types.Message):
+    logger.info(f"Для пользователь {message.from_user.id} ввел сообщение {message.text} без привязки к какой-либо команде")
     await message.answer("Пожалуйста, используйте одну из указанных команд.")
     return
 
